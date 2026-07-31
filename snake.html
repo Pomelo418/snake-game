@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e0e0;
+      user-select: none;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      color: #39ff14;
+      text-shadow: 0 0 12px #39ff14, 0 0 30px #39ff1466;
+    }
+
+    #hud {
+      display: flex;
+      gap: 48px;
+      margin-bottom: 14px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 2px;
+    }
+
+    .stat-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #39ff14;
+      text-shadow: 0 0 8px #39ff1488;
+      min-width: 3ch;
+      display: block;
+    }
+
+    #arena {
+      position: relative;
+      border-radius: 6px;
+      box-shadow: 0 0 0 2px #1a1a2e, 0 0 40px #39ff1422, 0 0 80px #39ff1411;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 10, 15, 0.88);
+      backdrop-filter: blur(4px);
+      gap: 18px;
+      transition: opacity 0.2s;
+    }
+
+    .overlay.hidden { display: none; }
+
+    .overlay h2 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    #gameover-screen h2 { color: #ff2d55; text-shadow: 0 0 16px #ff2d5599; }
+    #pause-screen   h2 { color: #00d4ff; text-shadow: 0 0 16px #00d4ff99; }
+    #start-screen   h2 { color: #39ff14;  text-shadow: 0 0 16px #39ff1499; }
+
+    .overlay p {
+      font-size: 0.9rem;
+      color: #888;
+      letter-spacing: 0.08em;
+    }
+
+    .final-score {
+      font-size: 1rem;
+      color: #ccc;
+    }
+
+    .final-score span {
+      color: #39ff14;
+      font-weight: 700;
+      text-shadow: 0 0 8px #39ff14aa;
+    }
+
+    button {
+      margin-top: 6px;
+      padding: 12px 36px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      border: 2px solid #39ff14;
+      border-radius: 4px;
+      background: transparent;
+      color: #39ff14;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s, color 0.15s;
+    }
+
+    button:hover {
+      background: #39ff14;
+      color: #0a0a0f;
+      box-shadow: 0 0 20px #39ff14aa;
+    }
+
+    #hint {
+      margin-top: 16px;
+      font-size: 0.72rem;
+      color: #444;
+      letter-spacing: 0.12em;
+      text-align: center;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Snake</h1>
+
+  <div id="hud">
+    <div class="stat">
+      <div class="stat-label">Score</div>
+      <span class="stat-value" id="score-display">0</span>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Best</div>
+      <span class="stat-value" id="best-display">0</span>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Level</div>
+      <span class="stat-value" id="level-display">1</span>
+    </div>
+  </div>
+
+  <div id="arena">
+    <canvas id="canvas"></canvas>
+
+    <div class="overlay" id="start-screen">
+      <h2>Snake</h2>
+      <p>Eat food. Don't die.</p>
+      <button id="start-btn">Start Game</button>
+    </div>
+
+    <div class="overlay hidden" id="pause-screen">
+      <h2>Paused</h2>
+      <button id="resume-btn">Resume</button>
+    </div>
+
+    <div class="overlay hidden" id="gameover-screen">
+      <h2>Game Over</h2>
+      <p class="final-score">Score: <span id="final-score">0</span></p>
+      <p class="final-score">Best: <span id="final-best">0</span></p>
+      <button id="restart-btn">Play Again</button>
+    </div>
+  </div>
+
+  <p id="hint">
+    ARROW KEYS · Move &nbsp;|&nbsp; SPACE · Pause/Resume
+  </p>
+
+<script>
+(() => {
+  const COLS = 25, ROWS = 25, CELL = 24;
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width  = COLS * CELL;
+  canvas.height = ROWS * CELL;
+
+  const scoreEl  = document.getElementById('score-display');
+  const bestEl   = document.getElementById('best-display');
+  const levelEl  = document.getElementById('level-display');
+  const finalScore = document.getElementById('final-score');
+  const finalBest  = document.getElementById('final-best');
+
+  const startScreen   = document.getElementById('start-screen');
+  const pauseScreen   = document.getElementById('pause-screen');
+  const gameoverScreen = document.getElementById('gameover-screen');
+
+  document.getElementById('start-btn').addEventListener('click', startGame);
+  document.getElementById('resume-btn').addEventListener('click', togglePause);
+  document.getElementById('restart-btn').addEventListener('click', startGame);
+
+  const DIR = { UP:[0,-1], DOWN:[0,1], LEFT:[-1,0], RIGHT:[1,0] };
+  const KEY_MAP = {
+    ArrowUp:'UP', ArrowDown:'DOWN', ArrowLeft:'LEFT', ArrowRight:'RIGHT',
+    w:'UP', s:'DOWN', a:'LEFT', d:'RIGHT'
+  };
+  const OPPOSITE = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
+
+  let snake, dir, nextDir, food, score, best, level, speed, paused, dead, raf, lastTime, accumulated;
+
+  best = parseInt(localStorage.getItem('snake_best') || '0');
+  bestEl.textContent = best;
+
+  function startGame() {
+    snake = [{ x: 12, y: 12 }, { x: 11, y: 12 }, { x: 10, y: 12 }];
+    dir = 'RIGHT';
+    nextDir = 'RIGHT';
+    score = 0;
+    level = 1;
+    speed = 140;
+    paused = false;
+    dead = false;
+    accumulated = 0;
+    lastTime = null;
+
+    placeFood();
+    updateHUD();
+
+    startScreen.classList.add('hidden');
+    pauseScreen.classList.add('hidden');
+    gameoverScreen.classList.add('hidden');
+
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(loop);
+  }
+
+  function placeFood() {
+    const occupied = new Set(snake.map(s => `${s.x},${s.y}`));
+    let pos;
+    do {
+      pos = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+    } while (occupied.has(`${pos.x},${pos.y}`));
+    food = pos;
+  }
+
+  function togglePause() {
+    if (dead) return;
+    paused = !paused;
+    if (paused) {
+      pauseScreen.classList.remove('hidden');
+    } else {
+      pauseScreen.classList.add('hidden');
+      lastTime = null;
+      raf = requestAnimationFrame(loop);
+    }
+  }
+
+  function loop(ts) {
+    if (paused || dead) return;
+    if (!lastTime) lastTime = ts;
+    accumulated += ts - lastTime;
+    lastTime = ts;
+
+    if (accumulated >= speed) {
+      accumulated -= speed;
+      tick();
+    }
+
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function tick() {
+    dir = nextDir;
+    const [dx, dy] = DIR[dir];
+    const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+    if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) { gameOver(); return; }
+    if (snake.some(s => s.x === head.x && s.y === head.y)) { gameOver(); return; }
+
+    snake.unshift(head);
+
+    if (head.x === food.x && head.y === food.y) {
+      score++;
+      if (score > best) { best = score; localStorage.setItem('snake_best', best); }
+      level = Math.floor(score / 5) + 1;
+      speed = Math.max(60, 140 - (level - 1) * 8);
+      placeFood();
+      updateHUD();
+    } else {
+      snake.pop();
+    }
+  }
+
+  function gameOver() {
+    dead = true;
+    cancelAnimationFrame(raf);
+    finalScore.textContent = score;
+    finalBest.textContent  = best;
+    bestEl.textContent     = best;
+    gameoverScreen.classList.remove('hidden');
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    bestEl.textContent  = best;
+    levelEl.textContent = level;
+  }
+
+  // ── Drawing ──────────────────────────────────────────────────────────────
+
+  const NEON_GREEN  = '#39ff14';
+  const NEON_CYAN   = '#00d4ff';
+  const NEON_PINK   = '#ff2d55';
+  const GRID_COLOR  = '#0d0d18';
+  const GRID_LINE   = '#111128';
+
+  function draw() {
+    // Background
+    ctx.fillStyle = GRID_COLOR;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid lines
+    ctx.strokeStyle = GRID_LINE;
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x <= COLS; x++) {
+      ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, canvas.height); ctx.stroke();
+    }
+    for (let y = 0; y <= ROWS; y++) {
+      ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(canvas.width, y * CELL); ctx.stroke();
+    }
+
+    // Food
+    drawFood();
+
+    // Snake
+    snake.forEach((seg, i) => drawSegment(seg, i));
+  }
+
+  function drawFood() {
+    const cx = food.x * CELL + CELL / 2;
+    const cy = food.y * CELL + CELL / 2;
+    const r  = CELL / 2 - 3;
+    const t  = Date.now() / 600;
+    const pulse = 1 + 0.18 * Math.sin(t);
+
+    // Glow
+    const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.2 * pulse);
+    grd.addColorStop(0, '#ff2d5555');
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 2.2 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core
+    ctx.save();
+    ctx.shadowColor = NEON_PINK;
+    ctx.shadowBlur  = 18;
+    ctx.fillStyle   = NEON_PINK;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.arc(cx - r * 0.28, cy - r * 0.28, r * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawSegment(seg, index) {
+    const x = seg.x * CELL + 1;
+    const y = seg.y * CELL + 1;
+    const w = CELL - 2;
+    const isHead = index === 0;
+
+    const t = index / snake.length;
+    // Head: bright neon green → tail: deep cyan
+    const r = Math.round(lerp(0x39, 0x00, t));
+    const g = Math.round(lerp(0xff, 0xd4, t));
+    const b = Math.round(lerp(0x14, 0xff, t));
+    const color = `rgb(${r},${g},${b})`;
+
+    ctx.save();
+    ctx.shadowColor = isHead ? NEON_GREEN : color;
+    ctx.shadowBlur  = isHead ? 20 : 8;
+
+    // Body rectangle
+    ctx.fillStyle = color;
+    roundRect(ctx, x, y, w, w, isHead ? 6 : 4);
+    ctx.fill();
+
+    // Inner shine
+    ctx.fillStyle = `rgba(255,255,255,${isHead ? 0.25 : 0.1})`;
+    roundRect(ctx, x + 3, y + 3, w - 6, (w - 6) * 0.45, 3);
+    ctx.fill();
+
+    // Eyes on head
+    if (isHead) {
+      drawEyes(seg);
+    }
+
+    ctx.restore();
+  }
+
+  function drawEyes(seg) {
+    const cx = seg.x * CELL + CELL / 2;
+    const cy = seg.y * CELL + CELL / 2;
+    const [dx, dy] = DIR[dir];
+    const perp = [-dy, dx]; // perpendicular axis
+    const eyeR = 2.5;
+    const eyeDist = 4;
+    const fwdDist = 4;
+
+    [1, -1].forEach(side => {
+      const ex = cx + dx * fwdDist + perp[0] * side * eyeDist;
+      const ey = cy + dy * fwdDist + perp[1] * side * eyeDist;
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#0a0a0f';
+      ctx.beginPath();
+      ctx.arc(ex, ey, eyeR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(ex + dx * 0.8, ey + dy * 0.8, eyeR * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // ── Input ─────────────────────────────────────────────────────────────────
+
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (!dead && !startScreen.classList.contains('hidden')) return;
+      if (!dead) togglePause();
+      return;
+    }
+    const mapped = KEY_MAP[e.key];
+    if (!mapped) return;
+    e.preventDefault();
+    if (OPPOSITE[mapped] !== dir) nextDir = mapped;
+  });
+
+  // Continuous redraw for food pulse animation even when game hasn't ticked
+  (function animateIdle() {
+    if (dead || paused) draw();
+    requestAnimationFrame(animateIdle);
+  })();
+
+})();
+</script>
+</body>
+</html>
